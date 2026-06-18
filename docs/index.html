@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>CsvPlotter &mdash; Project Doc</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+
+<h1>CsvPlotter</h1>
+<p class="subtitle">A simple, focused desktop tool for plotting and analysing time-series CSV data &mdash; a "Time" column plus N data columns. Built with <strong>Python + Qt Widgets (PySide6)</strong> and <strong>pyqtgraph</strong>. Current phase: <strong>MVP complete</strong>.</p>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#overview">Project overview</a></li>
+    <li><a href="#phase">Current phase</a></li>
+    <li><a href="#stack">Tech stack</a></li>
+    <li><a href="#tree">Folder structure</a></li>
+    <li><a href="#how">How it works (architecture)</a></li>
+    <li><a href="#features">Feature design</a></li>
+    <li><a href="#build">Build &amp; run instructions</a></li>
+    <li><a href="#roadmap">Roadmap &mdash; the step-by-step plan</a></li>
+    <li><a href="#changelog">Changelog</a></li>
+  </ol>
+</nav>
+
+<h2 id="overview">1. Project overview</h2>
+<p>
+  <strong>CsvPlotter</strong> is a desktop application for <strong>plotting and analysing CSV data</strong>.
+  The expected input is a CSV with one <strong>Time</strong> column (the X axis) and any number of numeric
+  data columns. The user opens the file, picks which columns to show, and explores the signals
+  interactively: <strong>zoom, pan, a hover tooltip, per-series scale (gain) and offset</strong>, and a
+  pair of <strong>pinned points</strong> for reading the X/Y difference between two points.
+</p>
+<p>
+  The whole thing is <strong>Python + Qt Widgets (PySide6)</strong> with <strong>pyqtgraph</strong> doing the
+  plotting and <strong>pandas / numpy</strong> doing the CSV loading and the maths. It is deliberately kept
+  <strong>small and focused</strong> &mdash; an everyday "open a log and look at it" tool, not a replacement for
+  a full analysis suite.
+</p>
+<p>
+  It is a sibling to <strong>AutoLabel</strong> and <strong>InferenceVisualizer</strong> and follows the same
+  documentation conventions (this <code>index.html</code> + a shared <code>style.css</code>, a phased roadmap,
+  and a changelog). Those two are C++/Qt; CsvPlotter is the Python/Qt member of the family, because the
+  Python plotting ecosystem (pyqtgraph) gives interactive scientific plotting almost for free.
+</p>
+
+<h2 id="phase">2. Current phase <span class="badge">MVP complete</span></h2>
+<p>
+  The design and scope below are <strong>agreed but not yet implemented</strong>. The MVP is the user's core
+  feature list <em>plus</em> two-point pinned measurement:
+</p>
+<ul>
+  <li><strong>Core:</strong> open a CSV (Time + N columns), select which columns to plot, zoom, pan, a hover
+      tooltip, per-series scale (multiply) and X/Y offset.</li>
+  <li><strong>Agreed extra:</strong> click-to-pin <strong>points</strong> (max two) with a &Delta;x / &Delta;y readout.</li>
+  <li><strong>Deferred to roadmap:</strong> reset/auto-fit + PNG export, automatic downsampling for large files,
+      session save/load, and a visible-range statistics panel.</li>
+</ul>
+
+<h2 id="stack">3. Tech stack</h2>
+<table>
+  <tr><th>Area</th><th>Choice</th></tr>
+  <tr><td>Language</td><td>Python 3.10+</td></tr>
+  <tr><td>GUI</td><td>Qt 6 Widgets via <strong>PySide6</strong> (the official LGPL binding; hand-coded, no <code>.ui</code> files)</td></tr>
+  <tr><td>Plotting</td><td><strong>pyqtgraph</strong> &mdash; a Qt-native, interactive plotting widget (fast curves, wheel/box zoom, custom mouse policy)</td></tr>
+  <tr><td>Data</td><td><strong>pandas</strong> (CSV parsing) + <strong>numpy</strong> (the gain/offset maths)</td></tr>
+  <tr><td>Packaging (later)</td><td>PyInstaller for a standalone Windows build</td></tr>
+  <tr><td>Platform</td><td>Windows first; pure-Python so Linux/macOS follow for free</td></tr>
+</table>
+<p>
+  <strong>Why pyqtgraph and not Matplotlib?</strong> pyqtgraph is built for <em>interactive</em> data
+  exploration: mouse-wheel zoom, box-zoom, and crosshair primitives are part of its <code>ViewBox</code>
+  out of the box, and it stays fast on large arrays. Matplotlib excels at static, publication-quality
+  figures but its interaction is slower and clunkier &mdash; the wrong trade for a "load a log and scrub
+  through it" tool.
+</p>
+
+<h2 id="tree">4. Folder structure</h2>
+<div class="tree">CsvPlotter/
+├── main.py                     <span class="cm"># entry point: builds QApplication + MainWindow</span>
+├── requirements.txt            <span class="cm"># PySide6, pyqtgraph, pandas, numpy</span>
+├── csvplotter/
+│   ├── __init__.py
+│   ├── main_window.py          <span class="cm"># MainWindow: menus, layout, wiring (the glue)</span>
+│   ├── data/
+│   │   ├── csv_loader.py        <span class="cm"># pandas read_csv -> detect Time col -> build Series</span>
+│   │   └── series.py            <span class="cm"># Series dataclass: raw x/y + gain, offset_x, offset_y, visible, color</span>
+│   └── ui/
+│       ├── plot_view.py         <span class="cm"># pyqtgraph wrapper: curves, hover tooltip, auto-fit</span>
+│       ├── series_panel.py      <span class="cm"># side panel: checkable column list + gain/offset controls</span>
+│       └── pin_panel.py         <span class="cm"># pinned-points readout (Δx/Δy) + Clear, in the left tab</span>
+└── docs/
+    ├── index.html               <span class="cm"># this document</span>
+    └── style.css                <span class="cm"># shared with AutoLabel / InferenceVisualizer</span></div>
+
+<h2 id="how">5. How it works (architecture)</h2>
+<p>
+  The design follows the same separation the other two projects use: a thin <strong>UI layer</strong>, a
+  <strong>data model</strong>, and a <strong>MainWindow</strong> that wires them together. Signals flow one way:
+  the user changes something in the side panel &rarr; the model updates &rarr; the plot re-renders.
+</p>
+
+<h3>The Series model</h3>
+<p>
+  Each data column becomes one <code>Series</code> object holding the <strong>raw, untouched</strong> arrays
+  plus its display parameters:
+</p>
+<pre><code>@dataclass
+class Series:
+    name: str            <span class="c"># column header</span>
+    x: np.ndarray        <span class="c"># raw Time values</span>
+    y: np.ndarray        <span class="c"># raw data values</span>
+    visible: bool = True
+    gain: float = 1.0    <span class="c"># multiply Y by this</span>
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    color: str = ...     <span class="c"># auto-assigned from a palette</span>
+
+    def plot_x(self): return self.x + self.offset_x
+    def plot_y(self): return self.y * self.gain + self.offset_y</code></pre>
+<p>
+  The key idea: <strong>the raw data is never mutated</strong>. Scale and offset are display parameters, and
+  the plotted arrays are computed on the fly (<code>plot_x</code> / <code>plot_y</code>). That keeps "reset to
+  original" trivial and makes the transforms cheap to tweak live.
+</p>
+
+<h3>The render loop</h3>
+<ol>
+  <li><code>csv_loader</code> reads the file with pandas, identifies the Time column, and builds one
+      <code>Series</code> per remaining numeric column.</li>
+  <li><code>MainWindow</code> hands the series to the <code>SeriesPanel</code> (which lists them with
+      checkboxes + gain/offset spin-boxes) and to the <code>PlotView</code>.</li>
+  <li>Any change in the panel &mdash; toggle visibility, edit gain/offset &mdash; emits a signal;
+      <code>MainWindow</code> tells <code>PlotView</code> to redraw the affected curve from its
+      <code>plot_x()</code> / <code>plot_y()</code>.</li>
+  <li>Zoom/box-zoom, the hover tooltip, and click-to-pin are handled inside <code>PlotView</code> by a custom
+      <code>PlotViewBox</code> plus a <code>SignalProxy</code> (mouse-move) and <code>sigMouseClicked</code>.</li>
+</ol>
+
+<h2 id="features">6. Feature design</h2>
+
+<h3>Open CSV &amp; column selection</h3>
+<p>
+  <strong>File &rarr; Open CSV&hellip;</strong> (Ctrl+O). The loader looks for a column literally named
+  <code>Time</code>; if it isn't found, it falls back to the first column and the user can re-pick the Time
+  column from a dropdown. Every other numeric column appears in the <code>SeriesPanel</code> as a
+  <strong>checkable item</strong> &mdash; tick to plot, untick to hide.
+</p>
+
+<h3>Mouse: zoom &amp; box-zoom</h3>
+<p>
+  A custom <code>PlotViewBox</code> (subclass of pyqtgraph's <code>ViewBox</code>) sets the mouse policy:
+  <strong>left-drag</strong> draws a rubber-band box and the view zooms to it on release (RectMode);
+  <strong>middle-drag pans</strong>; the <strong>mouse wheel</strong> zooms; the <strong>right button is
+  inert</strong> (context menu disabled, no right-drag scaling). A left-<em>click</em> near a signal is reserved
+  for pinning a point (below), so the left button no longer pans. <strong>View &rarr; Reset View</strong>
+  (Ctrl+R) re-frames all visible data via <code>autoRange()</code>.
+</p>
+
+<h3>Step lines (sample &amp; hold)</h3>
+<p>
+  By default each series is drawn as a <strong>stair</strong>: a sample's value holds until the next sample's
+  time, which is how embedded-system / digital logs actually behave (the value doesn't ramp linearly between
+  log entries). This uses pyqtgraph's <code>stepMode="right"</code>. <strong>View &rarr; Step Lines</strong>
+  toggles it off for ordinary linear interpolation when a series is genuinely continuous.
+</p>
+
+<h3>Hover tooltip</h3>
+<p>
+  The tooltip only appears when the cursor is <strong>near a signal</strong> (within ~20&nbsp;px). When it is,
+  a marker snaps to the nearest sample of the closest curve and a small box shows that point's <strong>X and
+  Y</strong>. Proximity is measured in <em>pixels</em> (the candidate sample per series is found with
+  <code>np.searchsorted</code> on the plotted x, then mapped to screen coordinates), so "close enough" is
+  consistent regardless of axis scale. Wired through a pyqtgraph <code>SignalProxy</code> on mouse-move so it's
+  rate-limited and stays smooth; it hides in empty space and off the plot. No in-plot legend &mdash; the side
+  panel already shows which colour is which.
+</p>
+
+<h3>Scale (gain) and offset</h3>
+<p>
+  Each series row in the panel carries three spin-boxes: <strong>Gain</strong> (Y is multiplied),
+  <strong>Offset Y</strong>, and <strong>Offset X</strong> (shifts the curve along time). These map directly to
+  the <code>Series</code> fields, and editing one redraws just that curve. Useful for overlaying signals of
+  very different magnitudes, or aligning two traces in time.
+</p>
+
+<h3>Pinned points (&Delta;x / &Delta;y)</h3>
+<p>
+  Left-clicking near a signal <strong>pins a point</strong> there (a square marker snapped to the nearest
+  sample, with an X/Y label). At most <strong>two</strong> pins exist at once — clicking a third drops the oldest
+  (FIFO queue). The bottom of the left tab lists where the pins are (signal name + X/Y of each) and the
+  <strong>&Delta;x / &Delta;y</strong> between them, with a <strong>Clear points</strong> button. This is the
+  main "analysis" feature &mdash;
+  measuring intervals and value changes directly off the plot, between any two points on any signals.
+</p>
+
+<h2 id="build">7. Build &amp; run instructions</h2>
+<p>No compiler needed &mdash; it's pure Python.</p>
+<pre><code><span class="c"># 1. Create and activate a virtual environment (Windows PowerShell)</span>
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+<span class="c"># 2. Install dependencies</span>
+pip install -r requirements.txt
+
+<span class="c"># 3. Run</span>
+python main.py</code></pre>
+<p><code>requirements.txt</code>:</p>
+<pre><code>PySide6
+pyqtgraph
+pandas
+numpy</code></pre>
+<p>
+  Later, a one-file Windows executable can be produced with
+  <code>pyinstaller --noconsole --onefile main.py</code>.
+</p>
+
+<h2 id="roadmap">8. Roadmap &mdash; the step-by-step plan</h2>
+<p>Each phase is small enough to build, run, and verify before moving on (the same incremental approach as the sibling projects).</p>
+<table>
+  <tr><th>Phase</th><th>Scope</th><th>State</th></tr>
+  <tr><td>1</td><td><strong>Skeleton.</strong> Project layout, <code>requirements.txt</code>, a <code>MainWindow</code> with a menu bar and an empty pyqtgraph plot that launches.</td><td class="done">done</td></tr>
+  <tr><td>2</td><td><strong>Load &amp; plot.</strong> pandas loader, detect Time column, build a <code>Series</code> per column, plot them all, auto-fit. Zoom/pan work immediately (pyqtgraph).</td><td class="done">done</td></tr>
+  <tr><td>3</td><td><strong>Series panel.</strong> Checkable column list to show/hide series; per-series colour + a legend.</td><td class="done">done</td></tr>
+  <tr><td>4</td><td><strong>Transforms.</strong> Per-series gain, offset X, offset Y spin-boxes with live redraw.</td><td class="done">done</td></tr>
+  <tr><td>5</td><td><strong>Hover tooltip.</strong> Proximity tooltip &mdash; when the cursor nears a signal, a marker snaps to the nearest sample and shows its X and Y.</td><td class="done">done</td></tr>
+  <tr><td>6</td><td><strong>Pinned points.</strong> Click-to-pin (max two, FIFO) with the &Delta;x / &Delta;y readout and Clear button in the left tab.</td><td class="done">done</td></tr>
+</table>
+<p>The agreed MVP is complete. Everything below is optional and not currently planned.</p>
+
+<h3>Possible future implementations</h3>
+<ul>
+  <li><strong>Polish.</strong> Error dialogs for more edge cases, <code>QSettings</code> to remember window/dock
+      layout, additional keyboard shortcuts.</li>
+  <li><strong>PNG export</strong> of the current view.</li>
+  <li><strong>Automatic downsampling</strong> so very large CSVs stay responsive.</li>
+  <li><strong>Session save/load</strong> — persist column selection, gains, and offsets to a file.</li>
+  <li><strong>Visible-range statistics</strong> — min / max / mean of what's on screen.</li>
+  <li><strong>Multi-file overlay</strong> — plot more than one CSV at once.</li>
+  <li><strong>Time-column override</strong> — a dropdown to re-pick which column is the X axis.</li>
+</ul>
+
+<h2 id="changelog">9. Changelog</h2>
+<ul>
+  <li><strong>2026-06-17 &mdash; Step lines &amp; middle-button pan fix.</strong> Curves now default to
+      <strong>sample-and-hold</strong> (pyqtgraph <code>stepMode="right"</code>) so values hold until the next
+      sample &mdash; the correct shape for embedded/digital logs &mdash; with <strong>View &rarr; Step
+      Lines</strong> to switch back to linear; the mode is preserved across gain/offset redraws. Also fixed the
+      mouse policy so <strong>middle-drag pans</strong>: in RectMode the base ViewBox draws a box for the middle
+      button too, so <code>PlotViewBox</code> now flips to PanMode for middle-drags (left still box-zooms, right
+      still inert).</li>
+  <li><strong>2026-06-17 &mdash; Pinned points &amp; mouse-policy rework.</strong> Replaced the measurement
+      cursors with <strong>click-to-pin</strong> points: left-clicking near a signal pins a square marker at the
+      nearest sample (X/Y label on the plot), keeping at most two (FIFO). A new <code>ui/pin_panel.py</code>
+      (<code>PinPanel</code>) sits at the bottom of the left "Signals" tab and shows each pin's signal + X/Y, the
+      <strong>&Delta;x / &Delta;y</strong> between them, and a <strong>Clear points</strong> button.
+      <code>PlotView</code> gained
+      <code>place_pin()</code> / <code>clear_pins()</code> / <code>pin_data()</code> and a
+      <code>pins_changed</code> signal, with clicks routed via the scene's <code>sigMouseClicked</code>.
+      <strong>Mouse policy</strong> reworked through a <code>PlotViewBox</code> subclass: left-drag is now
+      rubber-band box-zoom (RectMode), middle-drag still pans, the wheel still zooms, and the right button is
+      inert (menu off, no right-drag); only the left button changed (it no longer pans). The old
+      <code>measurement_panel.py</code>, the A/B
+      <code>InfiniteLine</code> cursors, and the bottom Measurement dock were deleted. <em>Phases 7&ndash;8 were
+      dropped from the plan and folded into "Possible future implementations".</em> Verified: pin FIFO at the
+      third click, &Delta;x/&Delta;y readout, Clear (disables when empty), and the RectMode / menu-disabled
+      ViewBox state.</li>
+  <li><strong>2026-06-16 &mdash; Phase 6: measurement cursors.</strong> Added two draggable vertical
+      <code>InfiniteLine</code> cursors (<strong>A</strong> amber, <strong>B</strong> near-white, each labelled)
+      to <code>PlotView</code>, which emits <code>cursors_changed</code> as they move and exposes
+      <code>cursor_positions()</code>. A new <code>ui/measurement_panel.py</code> (<code>MeasurementPanel</code>)
+      shows a header line &mdash; t&nbsp;@&nbsp;A, t&nbsp;@&nbsp;B, <strong>&Delta;t</strong> &mdash; above a
+      table with one row per <em>visible</em> series giving y&nbsp;@&nbsp;A, y&nbsp;@&nbsp;B and
+      <strong>&Delta;y</strong>; it lives in a bottom <code>QDockWidget</code> shown only while the cursors are
+      on. Sampling shares the new <code>Series.sample_at()</code> (nearest sample in plotted coords), and
+      <code>fmt_num()</code> was hoisted to <code>series.py</code> so the hover tooltip and the panel format
+      identically. A checkable <strong>View &rarr; Measurement Cursors</strong> (Ctrl+M) toggles the cursors and
+      the dock; the panel refreshes on cursor drag and on any load / visibility / transform change. Verified with
+      A=0, B=2: Sine y@A=0, Drift y@A=0.5, &Delta;y per row, and hiding a series drops its table row. <strong>This
+      completes the agreed MVP.</strong></li>
+  <li><strong>2026-06-16 &mdash; Phase 5: hover tooltip.</strong> <code>PlotView</code> shows a
+      <strong>proximity</strong> tooltip rather than an always-on crosshair: on mouse-move it finds, across the
+      visible series, the nearest sample to the cursor (per-series candidate via <code>np.searchsorted</code> on
+      the plotted x, then distance measured in <em>screen pixels</em> by mapping through the
+      <code>ViewBox</code>). If the closest is within ~20&nbsp;px, a <code>ScatterPlotItem</code> marker snaps to
+      it and a <code>TextItem</code> box shows that point's <strong>X and Y</strong>; otherwise everything hides.
+      Tracking runs through a <code>pg.SignalProxy</code> on <code>sigMouseMoved</code> (rate-limited 60&nbsp;Hz);
+      hover items are re-added after <code>clear()</code> on each load and excluded from auto-range via
+      <code>ignoreBounds</code>. A checkable <strong>View &rarr; Hover Tooltip</strong> (Ctrl+H) toggles it.
+      <em>Per feedback:</em> dropped the in-plot legend (the side panel already shows the colours), and the
+      tooltip now triggers only near a signal and reports just X/Y instead of listing every series. Verified:
+      hovering on the Sine curve at t&asymp;1 reads x&asymp;1.0 / y&asymp;0, and empty space shows nothing.</li>
+  <li><strong>2026-06-16 &mdash; Phase 4: transforms.</strong> Reworked <code>SeriesPanel</code> into a
+      scrollable column of <code>SeriesRow</code> widgets. Each row now carries, below the swatch +
+      visibility checkbox, three <code>QDoubleSpinBox</code>es &mdash; <strong>Gain</strong> (multiplies Y),
+      <strong>Offset X</strong> (shifts along Time), <strong>Offset Y</strong> (shifts the value) &mdash; plus a
+      <strong>Reset</strong> button (gain&rarr;1, offsets&rarr;0). A row mutates its <code>Series</code> in place
+      and emits <code>transform_changed(name)</code>; <code>MainWindow</code> then calls the new
+      <code>PlotView.refresh_curve()</code> to redraw just that curve from <code>plot_x()</code>/<code>plot_y()</code>.
+      Spin-boxes use <code>setKeyboardTracking(False)</code> so a redraw fires on commit, not per keystroke; Reset
+      batches the three changes into one redraw. Verified: gain&times;3 + offset_y 1 took the Sine peak 1.0&rarr;4.0,
+      offset_x 5 shifted the start to t=5, and Reset restored the raw data. <em>Layout revised</em> to a compact
+      table &mdash; the Gain / X off / Y off headers appear once at the top and each series is a single thin row
+      (swatch + checkbox, three spin-boxes, reset), so panels with many columns stay manageable; a spacer row
+      keeps the rows pinned to the top and the dock opens at ~320&nbsp;px.</li>
+  <li><strong>2026-06-16 &mdash; Phase 3: series panel.</strong> Added <code>ui/series_panel.py</code> &mdash;
+      a <code>SeriesPanel</code> listing every series with a colour swatch and a checkbox, emitting
+      <code>visibility_changed(name, visible)</code> on toggle. <code>MainWindow</code> hosts it in a left
+      <code>QDockWidget</code> ("Series", dockable left/right, toggled from the View menu), keeps the loaded
+      series as the source of truth (<code>self._series</code>), and on toggle updates
+      <code>Series.visible</code> and calls the new <code>PlotView.set_series_visible()</code> to show/hide
+      the single curve. Verified: load populates the panel, and unticking a row hides exactly that curve while
+      the others stay.</li>
+  <li><strong>2026-06-16 &mdash; Phase 2: load &amp; plot.</strong> Added the <code>data/</code> package:
+      <code>series.py</code> (the <code>Series</code> dataclass with <code>plot_x()</code>/<code>plot_y()</code>
+      and a dark-friendly colour palette) and <code>csv_loader.py</code> (pandas <code>read_csv</code>,
+      Time-column detection &mdash; a column named "time", else the first column &mdash; building one
+      <code>Series</code> per numeric data column, non-numeric columns skipped, errors surfaced as
+      <code>CsvLoadError</code>). <code>PlotView.set_series()</code> draws each series as a coloured curve with
+      a legend and auto-fits the view. <strong>File &rarr; Open CSV&hellip;</strong> now opens a file dialog,
+      loads, plots, sets the window title, and reports the series count + Time column in the status bar; load
+      failures raise a <code>QMessageBox</code>. Verified the full open&rarr;plot path against a generated
+      sample CSV (Time + three test signals) &mdash; three curves render on the dark theme.</li>
+  <li><strong>2026-06-16 &mdash; Phase 1: skeleton.</strong> Project layout created
+      (<code>main.py</code>, <code>csvplotter/</code> package, <code>ui/plot_view.py</code>). A
+      <code>MainWindow</code> with File / View / Help menus (Open CSV&hellip; is a placeholder until
+      Phase 2), a Reset View action, an About box, and a status bar. The central <code>PlotView</code>
+      wraps a themed pyqtgraph <code>PlotWidget</code> (white background, grid, axis labels, legend) with
+      mouse zoom/pan already live. <strong>Dark theme</strong> throughout: a dark Fusion palette for the
+      window chrome plus a dark pyqtgraph background (<code>#1e2228</code> / light <code>#c8d0d8</code> text),
+      applied via <code>apply_dark_theme()</code> in <code>main.py</code>. Dependencies installed into <code>.venv</code> (PySide6 6.11.1,
+      pyqtgraph 0.14.0, pandas 3.0.3, numpy 2.4.6). Verified it launches and quits cleanly via a headless
+      offscreen smoke test.</li>
+  <li><strong>2026-06-15 &mdash; Planning.</strong> Scope agreed: PySide6 + pyqtgraph + pandas/numpy. MVP =
+      core (open CSV, column selection, zoom/pan, crosshair tooltip, per-series scale + X/Y offset) plus
+      measurement cursors. Architecture, folder layout, and the phased roadmap drafted. No code yet.</li>
+</ul>
+
+</main>
+</body>
+</html>
