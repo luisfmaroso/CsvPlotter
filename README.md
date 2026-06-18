@@ -1,10 +1,12 @@
 # CsvPlotter
 
+![CsvPlotter plotting example CSV signals on a dark theme](docs/images/data_example.png)
+
 A simple, focused desktop tool for **plotting and analysing time-series CSV data** — a
 file with one **Time** column and any number of data columns. You open the CSV, pick the
-columns you care about, and explore them interactively: **zoom, pan, a crosshair tooltip,
-per-series scale (gain) and X/Y offset**, and a pair of **measurement cursors** for reading
-the time/value difference between two points.
+columns you care about, and explore them interactively: **box-zoom, pan, a hover tooltip,
+per-series scale (gain) and X/Y offset**, and **click-to-pin points** for reading the X/Y
+difference between any two samples.
 
 Built with **Python + Qt Widgets (PySide6)** and **pyqtgraph**, it's the Python/Qt member
 of the same family as **AutoLabel** and **InferenceVisualizer** — kept deliberately small:
